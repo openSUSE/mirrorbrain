@@ -504,7 +504,7 @@ class MirrorDoctor(cmdln.Cmdln):
                         print('%s: adding network prefix: %s (AS%s)'
                               % (mirror.identifier, pfx, asn))
                         s = self.conn.Serverpfx(serverid=mirror.id,
-                                                prefix=pfx,
+                                                prefix=str(pfx),
                                                 asn=asn)
 
             if opts.asn and res:
