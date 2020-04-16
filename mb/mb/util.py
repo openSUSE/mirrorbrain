@@ -8,10 +8,6 @@ import socket
 t_start = 0
 rsync_version = None
 
-# TODO: we could make this a mirrorbrain.conf option instead of hard coding it
-ASN_DB_PATH = ''
-CITY_DB     = ''
-
 class VersionParser:
     def __init__(self, vers):
         self.vers = vers
@@ -86,7 +82,7 @@ class MirrorBrainHost:
         return ' '.join(r)
 
     def _find_city_info(self):
-        self.city_db   = geoip2.database.Reader(CITY_DB)
+        self.city_db   = geoip2.database.Reader(self.maxmind_city_db)
         if self.ip:
             try:
                 self.city_info = self.city_db.city(self.ip)
@@ -103,7 +99,7 @@ class MirrorBrainHost:
 
     def _find_asn(self):
         # TODO: maxmindcode here
-        self.asn_db    = geoip2.database.Reader(ASN_DB_PATH)
+        self.asn_db    = geoip2.database.Reader(self.maxmind_asn_db)
 
         if self.ip:
             try:
