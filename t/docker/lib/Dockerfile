@@ -36,8 +36,6 @@ VOLUME ['/opt/project']
 RUN systemctl enable dbus.service
 RUN systemctl enable postgresql
 
-ENTRYPOINT  ["/usr/lib/systemd/systemd"]
-
 ######
 
 ADD src/sql /usr/share/doc/packages/mirrorbrain/sql
