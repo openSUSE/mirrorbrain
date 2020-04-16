@@ -217,7 +217,8 @@ def hostname_from_url(url):
     return h
 
 
-def af_from_string(s):
+def af_from_string(address):
+    s=str(address)
     right = s.find('/')
     if right < 0:
         right = len(s)
