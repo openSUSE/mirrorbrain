@@ -41,7 +41,7 @@ class Afile:
 class MirrorBrainHost:
     """represent an IP address, or rather some data associated with it"""
 
-    def __init__(self, address):
+    def __init__(self, address, maxmind_asn_db = '/var/lib/GeoIP/GeoLite2-ASN.mmdb', maxmind_city_db = '/var/lib/GeoIP/GeoLite2-City.mmdb'):
         self.address = address
         self.ip = None
         self.ip6 = None
@@ -50,6 +50,9 @@ class MirrorBrainHost:
         self.prefix = None
         self.prefix6 = None
         self.city_info = None
+
+        self.maxmind_asn_db = maxmind_asn_db
+        self.maxmind_city_db = maxmind_city_db
 
         self._resolv_address(address)
         self._find_city_info()

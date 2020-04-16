@@ -82,6 +82,16 @@ class MirrorDoctor(cmdln.Cmdln):
         self.config = mb.conf.Config(
             conffile=self.options.configpath, instance=self.options.brain_instance)
 
+        if 'maxmind_asn_db' in self.config.general:
+          self.maxmind_asn_db = self.config.general['maxmind_asn_db']
+        else:
+          self.maxmind_asn_db = '/var/lib/GeoIP/GeoLite2-ASN.mmdb'
+
+        if 'maxmind_city_db' in self.config.general:
+          self.maxmind_city_db = self.config.general['maxmind_city_db']
+        else:
+          self.maxmind_city_db = '/var/lib/GeoIP/GeoLite2-City.mmdb'
+
         from mb.util import VersionParser
         version = VersionParser(__version__)
 
@@ -169,7 +179,7 @@ class MirrorDoctor(cmdln.Cmdln):
         if ':' in host:
             host, port = host.split(':')
 
-        mirrorbrain_host = MirrorBrainHost(host)
+        mirrorbrain_host = MirrorBrainHost(address = host, maxmind_asn_db = self.maxmind_asn_db, maxmind_city_db = self.maxmind_city_db)
 
         lat = 0
         lng = 0
@@ -375,7 +385,7 @@ class MirrorDoctor(cmdln.Cmdln):
         ${cmd_option_list}
         """
 
-        r = MirrorBrainHost(ip)
+        r = MirrorBrainHost(address = ip, maxmind_asn_db = self.maxmind_asn_db, maxmind_city_db = self.maxmind_city_db)
 
         if opts.asn:
             print(r.asn)
@@ -451,7 +461,7 @@ class MirrorDoctor(cmdln.Cmdln):
 
             # if opts.prefix or opts.asn:
             try:
-                res = MirrorBrainHost(hostname)
+                res = MirrorBrainHost(address = hostname, maxmind_asn_db = self.maxmind_asn_db, maxmind_city_db = self.maxmind_city_db)
             except mb.mberr.NameOrServiceNotKnown as e:
                 print('%s:' % mirror.identifier, e.msg)
                 #print ('%s: without DNS lookup, no further lookups are possible' % mirror.identifier)
