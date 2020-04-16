@@ -27,8 +27,8 @@ RUN zypper -n --gpg-auto-import-keys --no-gpg-checks refresh
 
 RUN zypper -n install postgresql10-ip4r postgresql10 postgresql10-server
 
-RUN zypper -n install mirrorbrain mirrorbrain-scanner apache2-worker apache2-mod_asn apache2-mod_maxminddb apache2-mod_form mirrorbrain-tools
-RUN zypper -n install apache2-devel
+RUN zypper -n install mirrorbrain mirrorbrain-scanner apache2-worker apache2-mod_asn apache2-mod_maxminddb apache2-mod_form mirrorbrain-tools apache2-devel
+RUN zypper -n install 'libmaxminddb-devel>=1.4.2' 'apache2-mod_maxminddb>=1.2.0'
 RUN zypper -n install python3-SQLObject python3-geoip2  python3-geoip2 python3-psycopg2 python3-psycopg2 python3-FormEncode
 
 VOLUME ['/sys/fs/cgroup']
