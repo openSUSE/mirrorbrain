@@ -61,9 +61,8 @@ RUN sed -i 's,\#log_lock_waits = off,log_lock_waits = on,' /var/lib/pgsql/data/p
 RUN sed -i 's,\#deadlock_timeout = 1s,deadlock_timeout = 10,' /var/lib/pgsql/data/postgresql.conf
 
 ADD mirrorbrain.conf /etc/mirrorbrain.conf
-ADD mirrorbrain-ci.mmdb /GeoLite2-ASN.mmdb
 ADD mirrorbrain-ci-city.mmdb /var/lib/GeoIP/GeoLite2-City.mmdb
-ADD mirrorbrain-ci.mmdb      /var/lib/GeoIP/GeoLite2-ASN.mmdb
+ADD mirrorbrain-ci-asn.mmdb  /var/lib/GeoIP/GeoLite2-ASN.mmdb
 ADD mod_maxminddb.conf /etc/apache2/conf.d/mod_maxminddb.conf 
 RUN chmod 0640 /etc/mirrorbrain.conf
 RUN chown root:mirrorbrain /etc/mirrorbrain.conf
