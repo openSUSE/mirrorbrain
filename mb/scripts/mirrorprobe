@@ -48,7 +48,7 @@ def reenable(mirror):
 
 
 def probe_http(mirror):
-    """Try to reach host at baseurl. 
+    """Try to reach host at baseurl.
     Set status_baseurl_new."""
 
     try:
@@ -319,7 +319,7 @@ def main():
                 mail.getSubject = lambda x: '[%s] mirrorprobe warning: %s replied with %s' \
                     % (config.instance, mirror.identifier, mirror.response_code)
 
-                logging.debug("""%s: (%s): response code not 200: %s: 
+                logging.debug("""%s: (%s): response code not 200: %s:
 I am not disabling this host, and continue to watch it...
 """ % (mirror.identifier, mirror.baseurl, mirror.response_code))
 
