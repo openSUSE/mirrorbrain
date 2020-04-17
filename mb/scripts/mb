@@ -89,7 +89,7 @@ class MirrorDoctor(cmdln.Cmdln):
         # set up the database connection
         import mb.conn
         self.conn = mb.conn.Conn(self.config.dbconfig,
-                                 version=mb.appinfo.version,
+                                 version=mb.appinfo.parsed_version,
                                  debug=self.options.debug)
 
     def do_instances(self, subcmd, opts):
