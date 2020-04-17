@@ -12,7 +12,7 @@ s = setup(
     version      = mb.appinfo.version,
     description  = 'mb, a tool to maintain the MirrorBrain database',
     author       = mb.appinfo.author_name,
-    author_email = mb.appinfo.author_name,
+    author_email = mb.appinfo.author_email,
     license      = mb.appinfo.license,
     url          = mb.appinfo.url,
 
