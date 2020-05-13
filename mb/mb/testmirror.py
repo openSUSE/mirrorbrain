@@ -38,7 +38,7 @@ def req(baseurl, filename, http_method='GET', get_digest=False):
 
 def probe(S, http_method='GET'):
 
-    if S.scheme in ['http', 'ftp']:
+    if S.scheme in ['http', 'https', 'ftp']:
         req = urllib.request.Request(S.probeurl)
         if S.scheme == 'http' and http_method == 'HEAD':
             # not for FTP URLs
@@ -155,7 +155,7 @@ def make_probelist(mirrors, filename, url_type='http', get_digest=False, get_con
     The Sample instances are used to hold the probing results.
     """
     from mb.util import Sample
-    if url_type == 'http':
+    if url_type == 'http' or url_type == 'https':
         return [Sample(i.identifier, i.baseurl, filename,
                        get_digest=get_digest, get_content=get_content)
                 for i in mirrors]
