@@ -171,6 +171,8 @@ class Sample:
 
         if self.probebaseurl.startswith('http://'):
             self.scheme = 'http'
+        elif self.probebaseurl.startswith('https://'):
+            self.scheme = 'https'
         elif self.probebaseurl.startswith('ftp://'):
             self.scheme = 'ftp'
         elif self.probebaseurl.startswith('rsync://') \
