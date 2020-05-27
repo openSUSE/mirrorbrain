@@ -31,6 +31,8 @@ mb9*/mb.sh makehashes $PWD/ap9-system2/dt -t $PWD/ap9-system2/hashes
 rs9*/start.sh
 rs9*/status.sh
 
+# since all mirrors are https - only - we must use https as well
+ap9*/configure_ssl.sh
 ap9*/start.sh
 ap9*/status.sh
 # ap9*/curl.sh downloads/folder1/ | grep file1.dat
@@ -41,7 +43,7 @@ for x in ap7 ap8; do
     $x*/start.sh
     $x*/status.sh
     mb9*/mb.sh new $x --http https://"$($x-system2/print_address.sh)" --rsync rsync://$(id -un):$(id -un)@127.0.0.1:9090/$x  --region NA --country us
-    mb9*/mb.sh scan --enable $x
+    mb9*/mb.sh scan --variations --enable $x
     $x-system2/curl.sh | grep downloads
 done
 

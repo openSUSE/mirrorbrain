@@ -19,6 +19,7 @@ from mb.util import MirrorBrainHost
 import mb.appinfo
 import signal
 import socket
+import time
 
 
 def catchterm(*args):
@@ -150,7 +151,6 @@ class MirrorDoctor(cmdln.Cmdln):
         ${cmd_option_list}
         """
 
-        import time
         from urllib.parse import urlparse
 
         try:
@@ -558,6 +558,8 @@ class MirrorDoctor(cmdln.Cmdln):
         print(r)
         if r.content is not None:
             print('content: %r...' % r.content[:240])
+        else:
+            print('got empty reply')
         if r.E is not None:
             print('exception:', flush=True)
             print(r.E, flush=True)
@@ -838,6 +840,10 @@ class MirrorDoctor(cmdln.Cmdln):
                        'Can be given multiple times.')
     @cmdln.option('-e', '--enable', action='store_true',
                   help='Enable a mirror, after it was scanned.')
+    @cmdln.option('--variations', action='store_true', default=False,
+                  help='Probe both https and http when enabling a mirror (needs -e).')
+    @cmdln.option("--client-ident", dest="client_ident", default="",
+                  help="custom name to use while logging scan result (needs -e).")
     @cmdln.option('-a', '--all', action='store_true',
                   help='Scan all enabled mirrors.')
     @cmdln.option('-j', '--jobs', metavar='N',
@@ -847,6 +853,7 @@ class MirrorDoctor(cmdln.Cmdln):
     @cmdln.option('-d', '--directory', metavar='DIR',
                   help='Scan only in dir under mirror\'s baseurl. '
                        'Default: start at baseurl. Does not delete files, only add.')
+
     def do_scan(self, subcmd, opts, *args):
         """${cmd_name}: scan mirrors
 
@@ -877,12 +884,12 @@ class MirrorDoctor(cmdln.Cmdln):
         for i in range(opts.quietness):
             cmd.append('-q')
 
-        if opts.enable:
-            cmd.append('-e')
         if opts.directory:
             cmd.append('-d %s' % opts.directory)
+        # will have concurrency handled in python
         if opts.jobs:
-            cmd += ['-j', opts.jobs]
+            import threading
+        #    cmd += ['-j', opts.jobs]
         if opts.enable or args:
             cmd.append('-f')
 
@@ -936,40 +943,40 @@ class MirrorDoctor(cmdln.Cmdln):
             print('No mirror to scan. Exiting.')
             sys.exit(0)
 
-        cmd += [mirror.identifier for mirror in mirrors_to_scan]
-
-        cmd = ' '.join(cmd)
-        if self.options.debug:
-            print(cmd)
-
-        if opts.directory:
-            print('Completed in', mb.util.timer_elapsed())
+        if opts.quietness < 2:
+            print('Mirror list built in in', mb.util.timer_elapsed())
             mb.util.timer_start()
 
-        sys.stdout.flush()
-
         import os
-        rc = os.system(cmd)
+        cmdline = ' '.join(cmd)
 
-        if opts.enable and rc == 0:
-            import time
-            import mb.testmirror
-            tt = time.ctime()
-            comment = ('*** scanned and enabled at %s.' % tt)
-            for mirror in mirrors_to_scan:
-                mirror.comment = ' '.join(
-                    [mirror.comment or '', '\n\n' + comment])
+        spawned = 0
+        for i, mirror in enumerate(mirrors_to_scan):
+            if opts.jobs is None or int(opts.jobs) < 2: 
+                self.do_mirror_scan(cmdline, mirror, opts)
+            else:
+                while threading.activeCount() > int(opts.jobs):
+                    print('waiting for for empty thread slot... so far started: ' % i)
+                    time.sleep(1)
+                spawned += 1
+                t = threading.Thread(target=self.do_mirror_scan,
+                             args=[cmdline, mirrors[i], opts, False],
+                             name="probeThread-%s (%s)" % (mirror.id, mirror.identifier))
+                # thread will keep the program from terminating.
+                t.setDaemon(0)
+                t.start()
+                if opts.variations:
+                    ta = threading.Thread(target=self.do_mirror_scan,
+                             args=[cmdline, mirrors[i], opts, True],
+                             name="probeThread-%s (%s) alternative" % (mirror.id, mirror.identifier))
+                    # thread will keep the program from terminating.
+                    ta.setDaemon(0)
+                    ta.start()
 
-                print('%s %s: testing status of base URL...' % (tt, mirror.identifier))
-                t = mb.testmirror.access_http(
-                    mirror.identifier, mirror.baseurl)
-                if t.http_code == 200:
-                    mirror.statusBaseurl = 1
-                    mirror.enabled = 1
-                    print('%s %s: OK. Mirror is online now.' % (tt, mirror.identifier))
-                else:
-                    print('%s %s: Error: base URL does not work: %s'
-                          % (tt, mirror.identifier, mirror.baseurl))
+        if opts.jobs is not None and int(opts.jobs) > 1:
+            while threading.activeCount() > 1:
+                print('waiting for %s threads to exit' % (threading.activeCount() - 1))
+                time.sleep(1)
 
         sys.stdout.flush()
         if opts.directory and len(mirrors_skipped):
@@ -979,6 +986,50 @@ class MirrorDoctor(cmdln.Cmdln):
 
         if opts.quietness < 2:
             print('Completed in', mb.util.timer_elapsed())
+
+    def do_mirror_scan(self, cmdline, mirror, opts, alternative = False):
+        scan = None
+
+        if opts.enable:
+            from mb.mirrorscan import start_mirror_scan, finish_mirror_scan, ScanScheme, isSsl
+            is_ssl = isSsl(mirror.baseurl)
+            if alternative:
+                is_ssl = not is_ssl
+            scan = start_mirror_scan(self.conn, mirror.id, opts.client_ident, ScanScheme.Http, is_probe = True, is_ssl = is_ssl)
+       
+        try:
+            cmd1 = cmdline + ' ' + mirror.identifier
+            if self.options.debug:
+                print(cmd1)
+
+            sys.stdout.flush()
+            import os
+            rc = os.system(cmd1)
+    
+            if opts.enable and rc == 0:
+                import mb.testmirror
+                tt = time.ctime()
+                comment = ('*** scanned and enabled at %s.' % tt)
+
+                mirror.comment = ' '.join(
+                    [mirror.comment or '', '\n\n' + comment])
+
+                print('%s %s: testing status of base URL...' % (tt, mirror.identifier))
+                success = False
+                t = mb.testmirror.access_http(
+                    mirror.identifier, mirror.baseurl)
+                if t.http_code == 200:
+                    mirror.statusBaseurl = 1
+                    mirror.enabled = 1
+                    success = True
+                    print('%s %s: OK. Mirror is online now.' % (tt, mirror.identifier))
+                else:
+                    print('%s %s: Error: base URL does not work: %s'
+                          % (tt, mirror.identifier, mirror.baseurl))
+        finally:
+            if scan is not None:
+                finish_mirror_scan(self.conn, scan, success)
+
 
     @cmdln.option('--force', action='store_true',
                   help='force refreshing all cached hashes')

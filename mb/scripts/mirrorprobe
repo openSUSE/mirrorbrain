@@ -68,11 +68,17 @@ def probe_http(mirror):
         mirror.response_code = None
         mirror.response = None
 
-        if mirror.baseurl == '':
+        url_to_scan = None
+        if hasattr(mirror, 'url_to_scan'): 
+            url_to_scan = mirror.url_to_scan
+        if not url_to_scan:
+            url_to_scan = mirror.baseurl
+
+        if not url_to_scan:
             return None
 
         try:
-            response = requests.get(mirror.baseurl, headers=request_headers)
+            response = requests.get(url_to_scan, headers=request_headers)
 
             try:
                 mirror.response_code = response.status_code
@@ -115,12 +121,12 @@ def probe_http(mirror):
                 mirror.response_code = 0
                 mirror.response = "%s: %s" % (e.errno, e.strerror)
             else:
-                print(mirror.identifier, mirror.baseurl, 'errno:', e.errno)
+                print(mirror.identifier, url_to_scan, 'errno:', e.errno)
                 raise
 
         except Exception as e:
             print('unhandled exception %s' % e)
-            print(mirror.identifier, mirror.baseurl)
+            print(mirror.identifier, url_to_scan)
             raise
 
     except Exception as e:
@@ -202,6 +208,17 @@ def main():
                       action="store_true",
                       help="don't update the database. Only look")
 
+    parser.add_option("--client-ident",
+                      dest="client_ident",
+                      default="",
+                      help="custom name to use while probe results (useful for troubleshooting)")
+
+    parser.add_option("--variations",
+                      dest="variations",
+                      default=False,
+                      action="store_true",
+                      help="http/https variations of base_url")
+
     parser.add_option("-e", "--enable-revived",
                       dest="enable_revived",
                       default=False,
@@ -259,6 +276,9 @@ def main():
                         version=mb.appinfo.parsed_version,
                         debug=(options.loglevel == 'DEBUG'))
 
+    if not options.no_run:
+        from mb.mirrorscan import start_mirror_scan, finish_mirror_scan, isSsl
+
     #
     # get mirrors from database
     #
@@ -286,24 +306,61 @@ def main():
     #
     logging.info('----- %s mirrors to check' % len(mirrors))
 
+    concurrency = min(16,len(mirrors))
+    from queue import Queue
+    from threading import Thread
+    probe_queue = Queue()
+    
+    for i in range(min(concurrency, len(mirrors))):
+        Thread(target=probe_http_queue, args=(i, probe_queue, ), daemon=True).start()
+
     for i, mirror in enumerate(mirrors):
-        #mirror.status_baseurl_new = False
-        #mirror.timed_out = True
+        print('Queuing:', mirror.id)
+        probe_queue.put((mirror, options, False))
+        if options.variations:
+            probe_queue.put((mirror, options, True))
 
-        t = threading.Thread(target=probe_http,
-                             args=[mirrors[i]],
-                             name="probeThread-%s (%s)" % (mirror.id, mirror.identifier))
-        # thread will keep the program from terminating.
-        t.setDaemon(0)
-        t.start()
+    print('*** Main thread waiting')
+    probe_queue.join()
+    print('*** Done')
+    sys.exit(0)
 
-    while threading.activeCount() > 1:
-        logging.debug('waiting for %s threads to exit' % (threading.activeCount() - 1))
-        time.sleep(1)
+def probe_http_queue(i, q):
+    while True:
+        print('%s: Looking for the next enclosure' % i)
+        tpl = q.get()
+        if tpl is None:
+            time.sleep(1)
+            continue
+        print(tpl)
+        do_probe_mirror(tpl[0], tpl[1], tpl[2])
+        q.task_done()
 
-    for mirror in mirrors:
+def do_probe_mirror(mirror, options, alternative = False):
+    scan = None
+    if not options.no_run:
+        from mb.mirrorscan import start_mirror_scan, finish_mirror_scan, isSsl
+        is_ssl = isSsl(mirror.baseurl)
+        if alternative:
+            is_ssl = not is_ssl
+        print('%s: baseurl %s | is_ssl %s | alternative %s' % (mirror.identifier, repr(mirror.baseurl), repr(is_ssl), repr(alternative)))
+        scan = start_mirror_scan(mirror._connection, mirror.id, options.client_ident, mb.mirrorscan.ScanScheme.Http, is_probe = True, is_ssl = is_ssl)
+    try:
+        success = False
+        if not options.no_run and scan is None:
+            logging.debug('%s: baseurl %s: cannot start scan' % (mirror.identifier, repr(mirror.baseurl)))
+            return False
+        success = _do_probe(mirror, options, alternative)
+    finally:
+        if scan is not None:
+            finish_mirror_scan(mirror._connection, scan, success)
+    return success
 
-        logging.debug('%s: baseurl %s / baseurl_new %s' % (mirror.identifier, repr(mirror.statusBaseurl), repr(mirror.status_baseurl_new)))
+def _do_probe(mirror, options, alternative):
+    if True: # this if is temporary to limit diff noise
+        probe_http(mirror)
+        will_update = (not options.no_run and ((not hasattr(mirror, 'url_to_scan')) or mirror.baseurl == mirror.url_to_scan or (not mirror.url_to_scan)))
+        logging.debug('%s: baseurl %s / baseurl_new %s / will update %s' % (mirror.identifier, repr(mirror.statusBaseurl), repr(mirror.status_baseurl_new), repr(will_update)))
         # old failure
         if not mirror.statusBaseurl and not mirror.status_baseurl_new:
 
@@ -322,7 +379,7 @@ I am not disabling this host, and continue to watch it...
                 #comment = mirror.comment or ''
                 #comment += ('\n*** mirrorprobe, %s: got status code %s' % (time.ctime(), mirror.response_code))
                 logging.debug('setting enabled=0 for %s' % (mirror.identifier))
-                if not options.no_run:
+                if will_update:
                     # mirror.enabled = 0
                     mirror.statusBaseurl = 0
                     #mirror.comment = comment
@@ -334,26 +391,28 @@ I am not disabling this host, and continue to watch it...
             logging.debug('alive: %s: %s' % (mirror.identifier, mirror.response))
             if mirror.enabled == 0 and options.enable_revived:
                 logging.info('re-enabling %s' % mirror.identifier)
-                if not options.no_run:
+                if will_update:
                     reenable(mirror)
 
         # new failure
         elif not mirror.status_baseurl_new and mirror.statusBaseurl:
             logging.info('FAIL: %s (%s): %s' % (mirror.identifier, mirror.baseurl, mirror.response))
             logging.debug('setting status_baseurl=0 for %s (id=%s)' % (mirror.identifier, mirror.id))
-            if not options.no_run:
+            if will_update:
                 mirror.statusBaseurl = 0
 
         # revived
         elif not mirror.statusBaseurl and mirror.status_baseurl_new == 1:
             logging.info('REVIVED: %s' % mirror.identifier)
             logging.debug('setting status_baseurl=1 for %s (id=%s)' % (mirror.identifier, mirror.id))
-            if not options.no_run:
+            if will_update:
                 mirror.statusBaseurl = 1
             if options.enable_revived:
                 logging.info('re-enabling %s' % mirror.identifier)
-                if not options.no_run:
+                if will_update:
                     reenable(mirror)
+
+        return mirror.response_code is not None and mirror.response_code < 300
 
 
 if __name__ == '__main__':

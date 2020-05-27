@@ -328,6 +328,66 @@ class Conn:
                     idName = 'file_id'
             self.Hash = Hash
 
+        try:
+            class ScanType(SQLObject):
+                """the scan_type table"""
+                class sqlmeta:
+                    fromDatabase = True
+            self.ScanType = ScanType
+        except (dberrors.ProgrammingError, psycopg2.ProgrammingError):
+            print('', file=sys.stderr)
+            print('>>> A database table for scan_type does not exit. Creating...', file=sys.stderr)
+            query = """
+            CREATE TABLE "scan_type" (
+                    "id" serial PRIMARY KEY,
+                    "server_id" INTEGER REFERENCES server,
+                    "is_probe" BOOL NOT NULL DEFAULT 'F',
+                    "is_ssl"   BOOL NOT NULL DEFAULT 'F',
+                    "is_ipv6"  BOOL NOT NULL DEFAULT 'F',
+                    "scheme"   INT  NOT NULL
+            );
+            """
+            Filearr._connection.query(query)
+
+            query = """
+            CREATE INDEX "scan_type_server_id_scheme_key" ON "scan_type" (
+                   "server_id", "scheme"
+            );
+            """
+            Filearr._connection.query(query)
+            class ScanType(SQLObject):
+                """the scan_type table"""
+                class sqlmeta:
+                    fromDatabase = True
+            self.ScanType = ScanType
+
+        try:
+            class Scan(SQLObject):
+                """the scan table"""
+                class sqlmeta:
+                    fromDatabase = True
+            self.Scan = Scan
+        except (dberrors.ProgrammingError, psycopg2.ProgrammingError):
+            print('', file=sys.stderr)
+            print('>>> A database table for scan does not exit. Creating...', file=sys.stderr)
+            query = """
+            CREATE TABLE "scan" (
+                    id serial PRIMARY KEY,
+                    scan_type_id INTEGER REFERENCES scan_type NOT NULL,
+                    started_at timestamp with time zone,
+                    finished_at timestamp with time zone,
+                    success BOOLEAN default null, -- NULL means incomplete
+                    revision INTEGER default 0, -- Increments when success differs from previous run
+                    scanned_by varchar(512) default null -- Something which identifies the scanner
+            );
+            """
+            Filearr._connection.query(query)
+            class Scan(SQLObject):
+                """the scan table"""
+                class sqlmeta:
+                    fromDatabase = True
+            self.Scan = Scan
+
         if debug:
             self.Server._connection.debug = True
 

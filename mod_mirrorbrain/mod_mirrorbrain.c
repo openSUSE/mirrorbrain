@@ -92,6 +92,17 @@
 #include "mod_status.h"
 #include "mod_form.h"
 
+#include <mod_ssl.h>
+
+static int is_https(conn_rec *c)
+{
+    int (*is_https_conn)(conn_rec *c);
+    is_https_conn = APR_RETRIEVE_OPTIONAL_FN(ssl_is_https);
+    if (is_https_conn)
+        return is_https_conn(c);
+    return 0;
+}
+
 #define wild_match(p,s) (apr_fnmatch(p,s,APR_FNM_CASE_BLIND) == APR_SUCCESS)
 
 /* from ssl/ssl_engine_config.c */
@@ -137,19 +148,23 @@
 #define DBD_LLD_FMT "lld"
 #endif
 
-#define DEFAULT_QUERY "SELECT id, identifier, region, country, " \
+#define DEFAULT_QUERY "SELECT s.id, identifier, region, country, " \
                              "lat, lng, " \
                              "asn, prefix, score, baseurl, " \
                              "region_only, country_only, " \
                              "as_only, prefix_only, " \
                              "other_countries, file_maxsize " \
-                      "FROM server " \
-                      "LEFT JOIN serverpfx ON id = serverid AND family(serverpfx.prefix) = family(ipaddress(%s)) " \
-                      "WHERE id::smallint = any(" \
+                      "FROM server s " \
+                      "JOIN scan_type st   ON s.id = st.server_id  AND st.is_ssl = cast(%s as boolean) " \
+                      "LEFT JOIN scan scan1     ON scan1.scan_type_id = st.id " \
+                      "LEFT JOIN scan scan2     ON scan2.scan_type_id = st.id AND scan2.finished_at > scan1.finished_at " \
+                      "LEFT JOIN serverpfx spfx ON s.id = spfx.serverid AND family(spfx.prefix) = family(ipaddress(%s)) " \
+                      "WHERE s.id::smallint = any(" \
                           "(SELECT mirrors " \
                            "FROM filearr " \
                            "WHERE path = %s)::smallint[]) " \
-                      "AND enabled AND status_baseurl AND score > 0"
+                      "AND enabled AND status_baseurl AND score > 0 AND COALESCE(scan1.success, true) AND scan2.id is NULL"
+
 #define DEFAULT_QUERY_HASH "SELECT file_id, md5hex, sha1hex, sha256hex, " \
                                   "sha1piecesize, sha1pieceshex, btihhex, pgp, " \
                                   "zblocksize, zhashlens, zsumshex " \
@@ -2022,7 +2037,10 @@ static int mb_handler(request_rec *r)
             return DECLINED;
         }
     }
-
+    
+    debugLog(r, cfg, "Check ssl...");
+    const char* ssl = is_https(r->connection)? "t" : "f";
+    debugLog(r, cfg, "ssl : %s", ssl);
 
     /* no need to escape for the SQL query because we use a prepared
      * statement with bound parameters */
@@ -2031,7 +2049,7 @@ static int mb_handler(request_rec *r)
                       without it the mysql driver doesn't return results
                       once apr_dbd_num_tuples() has been called;
                       apr_dbd_get_row() will only return -1 after that. */
-                clientip, filename, NULL) != 0) {
+                ssl, clientip, filename, NULL) != 0) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
                 "[mod_mirrorbrain] Error looking up %s in database", filename);
         if (apr_is_empty_array(cfg->fallbacks)) {
