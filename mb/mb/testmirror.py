@@ -45,12 +45,6 @@ def probe(S, http_method='GET'):
             req.get_method = lambda: 'HEAD'
 
         try:
-            if S.scheme == 'https':
-                try:
-                    import ssl
-                    ssl._create_default_https_context = ssl._create_unverified_context
-                except:
-                    pass
             response = urllib.request.urlopen(req)
         except KeyboardInterrupt:
             print('interrupted!', file=sys.stderr)
@@ -76,7 +70,7 @@ def probe(S, http_method='GET'):
         if S.get_content:
             S.content = response.read()
 
-        if S.scheme.startswith('http'):
+        if S.scheme in ['http', 'https']:
             S.http_code = getattr(response, "code", None)
             if S.http_code == 200:
                 S.has_file = True
@@ -161,7 +155,7 @@ def make_probelist(mirrors, filename, url_type='http', get_digest=False, get_con
     The Sample instances are used to hold the probing results.
     """
     from mb.util import Sample
-    if url_type == 'http' or url_type == 'https':
+    if url_type == 'http':
         return [Sample(i.identifier, i.baseurl, filename,
                        get_digest=get_digest, get_content=get_content)
                 for i in mirrors]
