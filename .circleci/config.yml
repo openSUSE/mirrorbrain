@@ -17,24 +17,17 @@ jobs:
       image: ubuntu-1604:201903-01
     steps:
       - checkout
-      - run:
-          command: |
-            pyenv versions
-            pyenv global 3.7.0
-            git clone https://github.com/coryb/osht ../osht
-            make test_docker PRIVILEGED_TESTS=1 OSHT_LOCATION=$(pwd)/../osht/osht.sh
+      - run: git clone https://github.com/coryb/osht ../osht
+      - run: make test_docker PRIVILEGED_TESTS=1 OSHT_LOCATION=$(pwd)/../osht
 
   environs:
     machine:
       image: ubuntu-1604:201903-01
     steps:
       - checkout
-      - run:
-          command: |
-            pyenv versions
-            pyenv global 3.7.0
-            git clone https://github.com/coryb/osht ../osht
-            make test_environs OSHT_LOCATION=$(pwd)/../osht/osht.sh
+      - run: git clone https://github.com/coryb/osht ../osht
+      - run: make test_environs OSHT_LOCATION=$(pwd)/../osht
+      - run: make test_environs_stress OSHT_LOCATION=$(pwd)/../osht
 
 workflows:
   version: 2.1

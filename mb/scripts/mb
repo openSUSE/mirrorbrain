@@ -956,7 +956,7 @@ class MirrorDoctor(cmdln.Cmdln):
                 self.do_mirror_scan(cmdline, mirror, opts)
             else:
                 while threading.activeCount() > int(opts.jobs):
-                    print('waiting for for empty thread slot... so far started: ' % i)
+                    print('waiting for for empty thread slot... so far started: ' + repr(i))
                     time.sleep(1)
                 spawned += 1
                 t = threading.Thread(target=self.do_mirror_scan,
