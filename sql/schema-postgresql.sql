@@ -239,9 +239,7 @@ BEGIN
     IF arg_serverid = ANY(arr) THEN
         RAISE DEBUG 'nothing to do';
     ELSIF fileid IS NULL THEN
-        RAISE DEBUG 'creating entry for new file.';
-        INSERT INTO filearr (path, mirrors) VALUES (arg_path, ARRAY[arg_serverid]);
-        fileid := currval('filearr_id_seq');
+        RAISE DEBUG 'file was not added yet - nothing to do';
     ELSE
         RAISE DEBUG 'update existing file entry (id: %)', fileid;
         arr := array_append(arr, arg_serverid::smallint);

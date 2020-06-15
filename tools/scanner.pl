@@ -949,9 +949,11 @@ sub save_file
     #}
   $sth_mirr_addbypath->finish;
 
-  $sql = "DELETE FROM temp1 WHERE id = $fileid";
-  print "$sql\n" if $sqlverbose;
-  $dbh->do($sql) or die "$sql: ".$DBI::errstr;
+  if ($fileid) {
+    $sql = "DELETE FROM temp1 WHERE id = $fileid";
+    print "$sql\n" if $sqlverbose;
+    $dbh->do($sql) or die "$sql: ".$DBI::errstr;
+  }
 
   return $path;
 }
