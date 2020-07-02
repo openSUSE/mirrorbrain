@@ -1122,7 +1122,7 @@ sub rsync_readdir
   $path .= "/". $d if length $d;
   eval{
     rsync_get_filelist($identifier, $peer, $path, 0, \&rsync_cb, $peer, 1)
-  };
+  } or print "$@";
   return $peer->{counter};
 }
 

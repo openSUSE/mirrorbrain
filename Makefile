@@ -5,8 +5,15 @@ test_mb:
 test_docker:
 	bash t/test_docker.sh
 
+test_privileged:
+	PRIVILEGED_TESTS=1 bash t/test_docker.sh
+
 test_environs:
 	bash t/test_environs.sh
+
+test_environs_stress:
+	bash t/test_environs_stress.sh
+
 
 build_install:
 	meson setup build

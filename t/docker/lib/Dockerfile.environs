@@ -9,6 +9,10 @@ WORKDIR /opt
 RUN git clone https://github.com/andrii-suse/environs
 
 WORKDIR /opt/environs
-RUN bash -x .product/mb/branch/.install_dependencies.sh
+# try to utilize caching by splitting script into parts
+RUN head -9 .product/mb/branch/.install_dependencies.sh > /.install_dependencies1.sh
+RUN tail -n+10 .product/mb/branch/.install_dependencies.sh > /.install_dependencies2.sh
+RUN bash -x /.install_dependencies1.sh
+RUN bash -x /.install_dependencies2.sh
 
 ENTRYPOINT ["/usr/bin/tail", "-f", "/dev/null"]

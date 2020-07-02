@@ -32,7 +32,8 @@ set -eo pipefail
 
 [ -n "$testcase" ] || (echo No testcase provided; exit 1) >&2
 [ -f "$testcase" ] || (echo Cannot find file "$testcase"; exit 1 ) >&2
-[ -n "$OSHT_LOCATION" ] || OSHT_LOCATION=/usr/share/osht.sh
+[ -n "$OSHT_LOCATION" ] || OSHT_LOCATION=/usr/share
+[ -f "$OSHT_LOCATION" ] || OSHT_LOCATION="$OSHT_LOCATION"/osht.sh
 [ -f "$OSHT_LOCATION" ] || { echo "1..0 # osht.sh not found, skipped"; exit 0; }
 # shellcheck source=/dev/null
 source "$OSHT_LOCATION"
