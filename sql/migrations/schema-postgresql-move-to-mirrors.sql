@@ -1,9 +1,8 @@
-DROP TABLE IF EXISTS filemetadata, mirrors CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS filemetadata_mirror_count;
+DROP TABLE IF EXISTS files, server_files CASCADE;
 
-CREATE TABLE filemetadata
+CREATE TABLE files
 (
-    id integer GENERATED ALWAYS AS IDENTITY,
+    id bigint GENERATED ALWAYS AS IDENTITY,
     path character varying NOT NULL,
     path_hash bytea GENERATED ALWAYS AS (digest((path)::text, 'sha256'::text)) STORED,
     mtime timestamp with time zone,
@@ -20,62 +19,62 @@ CREATE TABLE filemetadata
     zsums bytea,
     created_at timestamp(6) with time zone NOT NULL DEFAULT now(),
     updated_at timestamp(6) with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT pk_filemetadata PRIMARY KEY (id)
+    CONSTRAINT pk_files PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_filemetadata_on_mtime_and_size
-    ON filemetadata USING btree
+CREATE INDEX idx_files_on_mtime_and_size
+    ON files USING btree
     (mtime ASC NULLS LAST, size ASC NULLS LAST);
 
-CREATE UNIQUE INDEX idx_filemetadata_on_path_unique
-    ON filemetadata USING btree
+CREATE UNIQUE INDEX idx_files_on_path_unique
+    ON files USING btree
     (path ASC NULLS LAST);
 
-CREATE TABLE mirrors
+CREATE TABLE server_files
 (
     server_id smallint NOT NULL,
-    filemetadata_id integer NOT NULL,
-    CONSTRAINT fk_mirrors_filemetadata FOREIGN KEY (filemetadata_id)
-        REFERENCES filemetadata (id) MATCH SIMPLE
+    file_id integer NOT NULL,
+    CONSTRAINT fk_server_files_files FOREIGN KEY (file_id)
+        REFERENCES files (id) MATCH SIMPLE
         ON UPDATE NO ACTION
         ON DELETE CASCADE,
-    CONSTRAINT fk_mirrors_servers FOREIGN KEY (server_id)
+    CONSTRAINT fk_server_files_servers FOREIGN KEY (server_id)
         REFERENCES server (id) MATCH SIMPLE
         ON UPDATE NO ACTION
         ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX idx_mirrors_on_server_id_and_filemetadata_id
-    ON mirrors USING btree
-    (filemetadata_id ASC NULLS LAST, server_id ASC NULLS LAST);
+CREATE UNIQUE INDEX idx_server_files_on_server_id_and_file_id
+    ON server_files USING btree
+    (file_id ASC NULLS LAST, server_id ASC NULLS LAST);
 
-CREATE INDEX idx_mirrors_server_id
-    ON mirrors USING btree
+CREATE INDEX idx_server_files_server_id
+    ON server_files USING btree
     (server_id ASC NULLS LAST);
 
-CREATE MATERIALIZED VIEW filemetadata_mirror_count AS
+CREATE MATERIALIZED VIEW files_mirror_count AS
   SELECT
-      filemetadata.id AS filemetadata_id,
-      count(mirrors.filemetadata_id) AS count
-    FROM filemetadata
-    LEFT JOIN mirrors
-      ON filemetadata.id = mirrors.filemetadata_id
+      files.id AS file_id,
+      count(server_files.file_id) AS count
+    FROM files
+    LEFT JOIN server_files
+      ON files.id = server_files.file_id
     WHERE mtime < (now()-'3 months'::interval)
-    GROUP BY filemetadata.id
-    ORDER BY filemetadata.id
+    GROUP BY files.id
+    ORDER BY files.id
 WITH DATA;
 
-CREATE INDEX idx_filemetadata_mirror_count_id
-  ON filemetadata_mirror_count
-  USING btree(filemetadata_id);
+CREATE INDEX idx_files_mirror_count_id
+  ON files_mirror_count
+  USING btree(file_id);
 
-CREATE INDEX idx_filemetadata_mirror_count_nonzero_count
-  ON filemetadata_mirror_count
+CREATE INDEX idx_files_mirror_count_nonzero_count
+  ON files_mirror_count
   USING btree(count)
   WHERE count > 0;
 
-CREATE INDEX idx_filemetadata_mirror_count_zero_count
-  ON filemetadata_mirror_count
+CREATE INDEX idx_files_mirror_count_zero_count
+  ON files_mirror_count
   USING btree(count)
   WHERE count = 0;
 
@@ -87,16 +86,21 @@ AS $BODY$
   DECLARE
    return_data integer;
 BEGIN
-  -- TODO:
-  -- Learn how we can call it from a function
-  -- PERFORM REFRESH materialized view filemetadata_mirror_count;
   WITH affected_rows AS (
-    DELETE FROM filemetadata
+    -- DELETE FROM files
+    --     USING files AS f
+    --     LEFT OUTER JOIN server_files AS sf
+    --     ON  sf.files_id = f.id
+    --   WHERE sf.files_id = f.id
+    --     AND sf.server_id IS NULL
+    --     AND files.mtime < (now()-'3 months'::interval)
+    DELETE FROM files
       WHERE id IN (
-        SELECT filemetadata_id
-          FROM filemetadata_mirror_count
+        SELECT file_id
+          FROM files_mirror_count
           WHERE count = 0
-    ) RETURNING *
+    )
+    RETURNING *
   )
   SELECT INTO return_data count(*)
     FROM affected_rows;
@@ -118,7 +122,7 @@ DECLARE
    return_data integer;
 BEGIN
   WITH affected_rows AS (
-    INSERT INTO mirrors (filemetadata_id, server_id)
+    INSERT INTO server_files (file_id, server_id)
       VALUES (arg_fileid, arg_serverid)
       ON CONFLICT DO NOTHING
       RETURNING *
@@ -144,7 +148,7 @@ DECLARE
     fileid integer;
     return_data integer;
 BEGIN
-    SELECT INTO fileid id FROM filemetadata WHERE path = arg_path;
+    SELECT INTO fileid id FROM files WHERE path = arg_path;
 
     -- There are three cases to handle, and we want to handle each of them
     -- with the minimal effort.
@@ -179,7 +183,7 @@ DECLARE
    return_data integer;
 BEGIN
   WITH affected_rows AS (
-    DELETE FROM mirrors WHERE server_id = arg_serverid AND filemetadata_id = arg_fileid RETURNING *
+    DELETE FROM server_files WHERE server_id = arg_serverid AND file_id = arg_fileid RETURNING *
   )
   SELECT INTO return_data count(*)
     FROM affected_rows;
@@ -224,7 +228,7 @@ CREATE OR REPLACE FUNCTION public.mb_mirror_filecount(
     RETURNS bigint
     LANGUAGE 'sql'
 AS $BODY$
-  SELECT count(*) FROM mirrors WHERE server_id = arg_serverid;
+  SELECT count(*) FROM server_files WHERE server_id = arg_serverid;
 $BODY$;
 
 -- FUNCTION: public.mirr_get_nfiles(text)
@@ -237,7 +241,7 @@ CREATE OR REPLACE FUNCTION public.mb_mirror_filecount(
     RETURNS bigint
     LANGUAGE 'sql'
 AS $BODY$
-  SELECT count(*) FROM mirrors WHERE (SELECT id FROM server WHERE identifier = arg_server_identifier) = server_id;
+  SELECT count(*) FROM server_files WHERE (SELECT id FROM server WHERE identifier = arg_server_identifier) = server_id;
 $BODY$;
 
 -- FUNCTION: public.mirr_hasfile_byid(integer, integer)
@@ -254,7 +258,7 @@ AS $BODY$
 DECLARE
     result integer;
 BEGIN
-    SELECT INTO result 1 FROM mirrors WHERE filemetadata_id = arg_fileid AND server_id = arg_serverid;
+    SELECT INTO result 1 FROM server_files WHERE file_id = arg_fileid AND server_id = arg_serverid;
     IF result > 0 THEN
         RETURN true;
     END IF;
@@ -277,7 +281,7 @@ DECLARE
     result integer;
     fileid integer;
 BEGIN
-    SELECT INTO fileid id FROM filemetadata WHERE path = arg_path;
+    SELECT INTO fileid id FROM files WHERE path = arg_path;
 
     -- There are three cases to handle, and we want to handle each of them
     -- with the minimal effort.
@@ -285,7 +289,7 @@ BEGIN
     IF fileid IS NULL THEN
         RAISE DEBUG 'we do not know about the file "%".', arg_path;
     ELSE
-      SELECT INTO result 1 FROM mirrors WHERE filemetadata_id = fileid AND server_id = arg_serverid;
+      SELECT INTO result 1 FROM server_files WHERE file_id = fileid AND server_id = arg_serverid;
       IF result > 0 THEN
           RETURN true;
       END IF;
@@ -316,4 +320,4 @@ CREATE VIEW hexhash AS
     zhashlens,
     zsums,
     encode(zsums, 'hex') AS zsumshex
-  FROM filemetadata;
+  FROM files;

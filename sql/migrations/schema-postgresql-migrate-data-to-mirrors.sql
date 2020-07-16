@@ -1,4 +1,4 @@
-INSERT INTO filemetadata (
+INSERT INTO files (
     id,
     path,
     mtime,
@@ -35,12 +35,12 @@ INSERT INTO filemetadata (
   ORDER BY filearr.id;
 
 -- TODO: documentation that this needs the intarray extension
-INSERT INTO mirrors (
-    filemetadata_id,
+INSERT INTO server_files (
+    file_id,
     server_id
   )
   SELECT
-    id AS filemetadata_id,
+    id AS file_id,
     unnest(mirrors & (select array_agg(id) from server)) AS server_id
   FROM filearr
   ORDER BY id;
