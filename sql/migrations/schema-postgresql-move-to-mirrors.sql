@@ -85,16 +85,22 @@ CREATE OR REPLACE FUNCTION mb_cleanup_old_files()
 
 AS $BODY$
   DECLARE
-  BEGIN
+   return_data integer;
+BEGIN
   -- TODO:
   -- Learn how we can call it from a function
   -- PERFORM REFRESH materialized view filemetadata_mirror_count;
-  DELETE FROM filemetadata
-    WHERE id IN (
-      SELECT filemetadata_id
-        FROM filemetadata_mirror_count
-        WHERE count = 0
-  ) RETURNING *;
+  WITH affected_rows AS (
+    DELETE FROM filemetadata
+      WHERE id IN (
+        SELECT filemetadata_id
+          FROM filemetadata_mirror_count
+          WHERE count = 0
+    ) RETURNING *
+  )
+  SELECT INTO return_data count(*)
+    FROM affected_rows;
+  RETURN return_data;
 END $BODY$;
 
 -- FUNCTION: public.mirr_add_byid(integer, integer)
@@ -109,11 +115,17 @@ CREATE OR REPLACE FUNCTION public.mb_mirror_add_file(
     LANGUAGE 'plpgsql'
 AS $BODY$
 DECLARE
+   return_data integer;
 BEGIN
-  INSERT INTO filemetadata (filemetadata_id, arg_serverid)
-    VALUES (arg_fileid, arg_serverid)
-    ON CONFLICT
-    DO NOTHING RETURNING *;
+  WITH affected_rows AS (
+    INSERT INTO mirrors (filemetadata_id, server_id)
+      VALUES (arg_fileid, arg_serverid)
+      ON CONFLICT DO NOTHING
+      RETURNING *
+  )
+  SELECT INTO return_data count(*)
+    FROM affected_rows;
+  RETURN return_data;
 END;
 $BODY$;
 
@@ -130,6 +142,7 @@ CREATE OR REPLACE FUNCTION public.mb_mirror_add_file(
 AS $BODY$
 DECLARE
     fileid integer;
+    return_data integer;
 BEGIN
     SELECT INTO fileid id FROM filemetadata WHERE path = arg_path;
 
@@ -140,10 +153,11 @@ BEGIN
         RAISE DEBUG 'we do not know about the file "%".', arg_path;
     ELSE
         RAISE DEBUG 'update existing file entry (path: % id: %)', arg_path, fileid;
-        SELECT into fileid mirr_add_byid(arg_serverid, fileid);
+        SELECT into return_data mb_mirror_add_file(arg_serverid, fileid);
+        RETURN return_data;
     END IF;
 
-    RETURN fileid;
+    RETURN 0;
 END;
 $BODY$;
 
@@ -162,8 +176,14 @@ CREATE OR REPLACE FUNCTION public.mb_mirror_remove_file(
     LANGUAGE 'plpgsql'
 AS $BODY$
 DECLARE
+   return_data integer;
 BEGIN
-  DELETE FROM mirrors WHERE server_id = arg_serverid AND filemetadata_id = arg_fileid RETURNING *;
+  WITH affected_rows AS (
+    DELETE FROM mirrors WHERE server_id = arg_serverid AND filemetadata_id = arg_fileid RETURNING *
+  )
+  SELECT INTO return_data count(*)
+    FROM affected_rows;
+  RETURN return_data;
 END;
 $BODY$;
 
@@ -224,7 +244,7 @@ $BODY$;
 
 DROP FUNCTION IF EXISTS public.mirr_hasfile_byid(integer, integer);
 
-CREATE OR REPLACE FUNCTION public.mb_mirror_hasfile(
+CREATE OR REPLACE FUNCTION public.mb_mirror_has_file(
     arg_serverid integer,
     arg_fileid integer
   )
@@ -246,7 +266,7 @@ $BODY$;
 
 DROP FUNCTION IF EXISTS public.mirr_hasfile_byname(integer, text);
 
-CREATE OR REPLACE FUNCTION public.mb_mirror_hasfile(
+CREATE OR REPLACE FUNCTION public.mb_mirror_has_file(
     arg_serverid integer,
     arg_path text
   )
@@ -277,7 +297,7 @@ $BODY$;
 DROP VIEW IF EXISTS hexhash;
 CREATE VIEW hexhash AS
   SELECT
-    id AS file_id,
+    id,
     mtime,
     size,
     md5,
