@@ -4,7 +4,7 @@ CREATE TABLE files
 (
     id bigint GENERATED ALWAYS AS IDENTITY,
     path character varying NOT NULL,
-    path_hash bytea GENERATED ALWAYS AS (digest((path)::text, 'sha256'::text)) STORED,
+    path_hash bytea GENERATED ALWAYS AS (sha256((path)::bytea)) STORED,
     mtime timestamp with time zone,
     size bigint,
     md5 bytea,
@@ -319,5 +319,7 @@ CREATE VIEW hexhash AS
     zblocksize,
     zhashlens,
     zsums,
-    encode(zsums, 'hex') AS zsumshex
+    encode(zsums, 'hex') AS zsumshex,
+    path
   FROM files;
+

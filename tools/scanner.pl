@@ -277,13 +277,14 @@ for my $row (@scan_list) {
 
   if(length $start_dir) {
     $sql = "CREATE TEMPORARY TABLE temp1 AS
-            SELECT id FROM filearr
+            SELECT file_id as id FROM server_files
+            JOIN files on file_id = id
             WHERE path LIKE '$start_dir/%'
-                  AND $row->{id} = ANY(mirrors)";
+                  AND $row->{id} = server_id";
   } else {
     $sql = "CREATE TEMPORARY TABLE temp1 AS
-            SELECT id FROM filearr
-            WHERE $row->{id} = ANY(mirrors)";
+            SELECT file_id as id FROM server_files
+            WHERE $row->{id} = server_id";
   }
   print "$sql\n" if $sqlverbose;
   $dbh->do($sql) or die "$sql: ".$DBI::errstr;
@@ -306,10 +307,6 @@ for my $row (@scan_list) {
   if($do_transaction) {
     $dbh->commit or die "$DBI::errstr";
   }
-
-  #$sql = "SELECT COUNT(*) FROM filearr WHERE $row->{id} = ANY(mirrors)";
-  #print "$sql\n" if $sqlverbose;
-
 
   my $start = int(gettimeofday * 1000);
   my $file_count = rsync_readdir($row->{identifier}, $row->{id}, $row->{baseurl_rsync}, $start_dir);
@@ -340,14 +337,14 @@ for my $row (@scan_list) {
 
 
   #$sql = "SELECT COUNT(*) FROM temp1";
-  $sql = "SELECT COUNT(mirr_del_byid($row->{id}, id) order by id) FROM temp1";
+  $sql = "DELETE FROM server_files WHERE server_id = $row->{id} and file_id in (select * FROM temp1)";
   print "$sql\n" if $sqlverbose;
   $ary_ref = $dbh->selectall_arrayref($sql) or die $dbh->errstr();
   my $purge_file_count = defined($ary_ref->[0]) ? $ary_ref->[0][0] : 0;
   print localtime(time) . " $row->{identifier}: files to be purged: $purge_file_count\n" if $verbose > 0;
 
 
-  $sql = "SELECT COUNT(*) FROM filearr WHERE $row->{id} = ANY(mirrors);";
+  $sql = "SELECT COUNT(*) FROM server_files WHERE $row->{id} = server_id;";
   print "$sql\n" if $sqlverbose;
 
   if(length $start_dir) {
@@ -932,7 +929,20 @@ sub save_file
   # explicitely tell Perl that the filename is in UTF-8 encoding
   $path = decode_utf8($path);
 
-  my $sql = "SELECT mirr_add_bypath(?, ?);";
+  my $sql = "WITH 
+    _cte_ins AS (
+        SELECT mb_mirror_add_file(?::integer, files.id::integer)
+        FROM files
+        LEFT JOIN temp1 on files.id = temp1.id
+        WHERE path = ? 
+        AND temp1.id IS NULL
+    ),
+    _cte_del AS (
+        DELETE FROM temp1 USING files f WHERE f.id = temp1.id AND path = ? RETURNING(temp1.id)
+    )
+    SELECT 1
+    FROM _cte_ins JOIN _cte_del ON TRUE;
+";
   if (!defined $sth_mirr_addbypath) {
     printf "\nPreparing add statement\n\n" if $sqlverbose;
     $sth_mirr_addbypath = $dbh->prepare( $sql ) or die "$identifier: $DBI::errstr";
@@ -940,19 +950,8 @@ sub save_file
   }
 
   printf "$sql  <-- $serverid, $path \n" if $sqlverbose;
-  $sth_mirr_addbypath->execute( $serverid, $path ) or die "$identifier: $DBI::errstr";
-
-  my @data = $sth_mirr_addbypath->fetchrow_array();
-  #if ($sth_mirr_addbypath->rows > 0) {
-    my $fileid = $data[0];
-    #print "fileid: $fileid\n";
-    #}
+  $sth_mirr_addbypath->execute( $serverid, $path, $path) or die "$identifier: $DBI::errstr";
   $sth_mirr_addbypath->finish;
-
-  $sql = "DELETE FROM temp1 WHERE id = $fileid";
-  print "$sql\n" if $sqlverbose;
-  $dbh->do($sql) or die "$sql: ".$DBI::errstr;
-
   return $path;
 }
 
@@ -985,62 +984,6 @@ sub cont
     return (0,$res->status_line);
   }
 }
-
-
-# getfileid returns the id as inserted in table file.
-#
-sub getfileid
-{
-  my $path = shift;
-  my @data;
-  my $id;
-
-  # prepare statements once
-  my $sql_select_file = "SELECT id FROM file WHERE path = ? LIMIT 1;";
-  if (!defined $sth_select_file) {
-    printf "\nPreparing select_file statement: $sql_select_file\n\n" if $sqlverbose;
-    $sth_select_file = $dbh->prepare( $sql_select_file );
-  }
-
-  my $sql_insert_file = "INSERT INTO file (path) VALUES (?);";
-  if (!defined $sth_insert_file) {
-    printf "\nPreparing insert_file statement: $sql_insert_file\n\n" if $sqlverbose;
-    $sth_insert_file = $dbh->prepare( $sql_insert_file );
-  }
-
-
-  printf "select_file: $sql_select_file  <--- $path \n" if $sqlverbose;
-
-  $sth_select_file->execute( $path ) or die $sth_select_file->errstr;
-  @data = $sth_select_file->fetchrow_array();
-  if ($sth_select_file->rows > 0) {
-    $id = $data[0];
-
-    $sth_select_file->finish;
-    printf "select_id result: $id \n" if $sqlverbose;
-    return $id if defined $id;
-  }
-
-
-  $sth_insert_file->execute( $path ) or die $sth_insert_file->err;
-
-  # now we still need the id
-  # FIXME: should use something like last_insert_id rather
-  printf "select_file (get the id after insertion): $sql_insert_file  <--- $path \n" if $sqlverbose;
-
-  $sth_select_file->execute( $path ) or die $sth_select_file->errstr;
-  @data = $sth_select_file->fetchrow_array();
-  if ($sth_select_file->rows > 0) {
-    $id = $data[0];
-
-    $sth_select_file->finish;
-    printf "select_id result: $id \n" if $sqlverbose;
-    return $id;
-  }
-  die "insert of $path failed - could not get last id\n";
-}
-
-
 
 # callback function
 sub rsync_cb

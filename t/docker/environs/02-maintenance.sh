@@ -28,7 +28,6 @@ mkdir -p ap9-system2/hashes
 mb9*/mb.sh makehashes $PWD/ap9-system2/dt -t $PWD/ap9-system2/hashes
 
 ap9*/start.sh
-ap9*/status.sh
 ap9*/curl.sh downloads/ | grep folder1
 
 for x in ap7 ap8; do
@@ -55,7 +54,9 @@ done
 test 2 == $(mb9/mb.sh file ls *file1.dat | grep ap7 | wc -l)
 test 2 == $(mb9/mb.sh dirs ap8 | grep downloads | wc -l)
 
-mb9*/mb.sh makehashes $PWD/ap9-system2/dt -t $PWD/ap9-system2/hashes | grep 'Unlinked 0 files, 1 directories'
+mv ap9*/dt/*log ap9*/
+out="$(mb9*/mb.sh makehashes $PWD/ap9-system2/dt -t $PWD/ap9-system2/hashes)" 
+echo "$out" | grep 'Unlinked 0 files, 1 directories'
 
 mb9*/mb.sh db vacuum -n | grep 'Stale files' | grep '\b2\b'
 mb9*/mb.sh db vacuum | grep 'Done.'
