@@ -45,13 +45,11 @@ use bytes;
 use Config::IniFiles;
 use Time::HiRes qw(gettimeofday);
 use Encode;
-use Digest::SHA qw(sha256);
+use Digest::SHA qw(sha256_hex);
 
 my $version = '2.19.2';
 my $verbose = 2;
 my $sqlverbose = 1;
-
-#$DB::inhibit_exit = 0;
 
 $SIG{'PIPE'} = 'IGNORE';
 
@@ -258,44 +256,31 @@ if ($parallel > 1) {
   exit 0;
 }
 
-my %file_hash_id_map = ();
-my %db_file_ids;
-my @new_file_ids;
+my %db_files_hash_id_map;
+my @new_file_hashes;
 
-$sql = "SELECT id, path_hash FROM files";
-$sql = $sql . " WHERE path like '$start_dir/%'" if $start_dir;
-print "$sql\n" if $sqlverbose;
-my $smh = $dbh->prepare($sql);
-
-# prepare map of path_hash=>id for files
-$smh->execute() or die "$sql: ".$DBI::errstr;
-while ( my @r = $smh->fetchrow_array ) {
-  $file_hash_id_map{$r[1]} = $r[0];
-}
-$smh->finish;
-
-$sql = "SELECT file_id, path_hash FROM server_files
+my $sql_server_files = "SELECT file_id, path_hash FROM server_files
           JOIN files on file_id = id
           WHERE ? = server_id";
-$sql = $sql . " AND path like '$start_dir/%'" if $start_dir;
-$smh = $dbh->prepare($sql) or die "$sql: ".$DBI::errstr;
+$sql_server_files = $sql_server_files . " AND path like '$start_dir/%'" if $start_dir;
+my $smh_server_files = $dbh->prepare($sql_server_files) or die "$sql_server_files: ".$DBI::errstr;
 
 
 for my $row (@scan_list) {
   print localtime(time) . " $row->{identifier}: starting\n" if $verbose > 0;
 
-  print "$sql, $row->{id}\n" if $sqlverbose;
-  $smh->execute($row->{id}) or die "$sql: ".$DBI::errstr;
+  print "$sql_server_files, $row->{id}\n" if $sqlverbose;
+  $smh_server_files->execute($row->{id}) or die "$sql_server_files: ".$DBI::errstr;
 
-  %db_file_ids    = ();
-  @new_file_ids   = ();
+  %db_files_hash_id_map = ();
+  @new_file_hashes      = ();
 
-  while ( my @r = $smh->fetchrow_array ) {
-    $db_file_ids{$r[0]} = 1;
+  while ( my @r = $smh_server_files->fetchrow_array ) {
+    $db_files_hash_id_map{$r[1]} = $r[0];
   }
-  $smh->finish;
+  $smh_server_files->finish;
 
-  my $initial_file_count = keys %db_file_ids;
+  my $initial_file_count = keys %db_files_hash_id_map;
   if(length $start_dir) {
     print localtime(time) . " $row->{identifier}: files in '$start_dir' before scan: $initial_file_count\n"
       if $verbose > 0;
@@ -328,27 +313,27 @@ for my $row (@scan_list) {
   $start = time();
 
   print localtime(time) . " $row->{identifier}: purging old files\n" if $verbose > 1;
-  my @purge_ids = sort { $a lt $b }  keys %db_file_ids;
+  my @purge_ids = sort { $a lt $b } values %db_files_hash_id_map;
   my $purge_file_count = @purge_ids;
   print localtime(time) . " $row->{identifier}: files to be purged: $purge_file_count\n" if $verbose > 0;
-  # to this point save_file() would remove all relevant files from %db_file_ids
+  # to this point save_file() would remove all relevant files from %db_files_hash_id_map
   if ($purge_file_count) {
     my $sql_values = join( ',', ("($row->{id}, ?)") x $purge_file_count );
     $sql = "DELETE FROM server_files WHERE (server_id, file_id) in ($sql_values)";
-    $smh = $dbh->prepare($sql) or die substr($sql,0,200) . "...: ".$DBI::errstr;
+    my $smh = $dbh->prepare($sql) or die substr($sql,0,200) . "...: ".$DBI::errstr;
     print substr($sql,0,200) . "...(". $purge_file_count .")\n" if $sqlverbose;
     $smh->execute(@purge_ids) or die substr($sql,0,200) . "...: ".$DBI::errstr;
     $smh->finish;
   }
   
-  my $new_file_count = @new_file_ids;
+  my $new_file_count = @new_file_hashes;
   print localtime(time) . " $row->{identifier}: files to be inserted: $new_file_count\n" if $verbose > 0;
   if ($new_file_count) {
-    my $sql_values = join( ',', ("($row->{id}, ?)") x $new_file_count );
-    $sql = "INSERT INTO server_files (server_id, file_id) VALUES $sql_values";
-    $smh = $dbh->prepare($sql) or die substr($sql,0,200) . "...: ".$DBI::errstr;
-    print substr($sql,0,200) . "...(". $purge_file_count .")\n" if $sqlverbose;
-    $smh->execute(sort @new_file_ids) or die substr($sql,0,200) . "...: ".$DBI::errstr;
+    my $sql_values = join( ',', ('?') x $new_file_count );
+    $sql = "INSERT INTO server_files (server_id, file_id) SELECT ?, id FROM files WHERE encode(path_hash,'hex') IN ($sql_values) ORDER BY id";
+    my $smh = $dbh->prepare($sql) or die substr($sql,0,200) . "...: ".$DBI::errstr;
+    print substr($sql,0,200) . "...($row->{id},{". $new_file_count ."})\n" if $sqlverbose;
+    $smh->execute($row->{id}, @new_file_hashes) or die substr($sql,0,200) . "...($row->{id},{". $new_file_count ."}): ".$DBI::errstr;
     $smh->finish;
   }    
 
@@ -917,14 +902,8 @@ sub save_file
   # explicitely tell Perl that the filename is in UTF-8 encoding
   $path = decode_utf8($path);
 
-  my $hash = sha256($path);
-  my $id = $file_hash_id_map{$hash};
-  return undef unless $id;
-  if (defined $db_file_ids{$id}) {
-    delete $db_file_ids{$id};
-  } else {
-    push @new_file_ids, $id;
-  }
+  my $hash = sha256_hex($path);
+  push @new_file_hashes, $hash unless delete $db_files_hash_id_map{$hash};
 
   return $path;
 }

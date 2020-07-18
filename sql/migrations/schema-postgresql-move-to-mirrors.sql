@@ -30,6 +30,8 @@ CREATE UNIQUE INDEX idx_files_on_path_unique
     ON files USING btree
     (path ASC NULLS LAST);
 
+CREATE INDEX idx_files_path_hash ON files(encode(path_hash,'hex'));
+
 CREATE TABLE server_files
 (
     server_id smallint NOT NULL,
