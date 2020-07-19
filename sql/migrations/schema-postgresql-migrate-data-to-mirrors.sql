@@ -18,18 +18,18 @@ INSERT INTO files (
   SELECT
     filearr.id,
     filearr.path,
-    to_timestamp(mtime) as mtime,
-    size::bigint,
-    md5::bytea,
-    sha1::bytea,
-    sha256::bytea,
-    sha1piecesize::integer,
-    sha1pieces::bytea,
-    btih::bytea,
-    pgp::text,
-    zblocksize::smallint,
-    zhashlens::character varying(8),
-    zsums::bytea
+    to_timestamp(hash.mtime) as mtime,
+    hash.size::bigint,
+    hash.md5::bytea,
+    hash.sha1::bytea,
+    hash.sha256::bytea,
+    hash.sha1piecesize::integer,
+    hash.sha1pieces::bytea,
+    hash.btih::bytea,
+    hash.pgp::text,
+    hash.zblocksize::integer,
+    hash.zhashlens::character varying(8),
+    hash.zsums::bytea
   FROM filearr
     LEFT JOIN hash ON hash.file_id = filearr.id
   ORDER BY filearr.id;
