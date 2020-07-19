@@ -14,7 +14,7 @@ CREATE TABLE files
     sha1pieces bytea,
     btih bytea,
     pgp text,
-    zblocksize smallint,
+    zblocksize integer,
     zhashlens character varying(8),
     zsums bytea,
     created_at timestamp(6) with time zone NOT NULL DEFAULT now(),
@@ -301,23 +301,11 @@ $BODY$;
 DROP VIEW IF EXISTS hexhash;
 CREATE VIEW hexhash AS
   SELECT
-    id,
-    mtime,
-    size,
-    md5,
-    encode(md5, 'hex') AS md5hex,
-    sha1,
-    encode(sha1, 'hex') AS sha1hex,
-    sha256,
-    encode(sha256, 'hex') AS sha256hex,
-    sha1piecesize,
-    sha1pieces,
+    files.*,
+    encode(md5,        'hex') AS md5hex,
+    encode(sha1,       'hex') AS sha1hex,
+    encode(sha256,     'hex') AS sha256hex,
     encode(sha1pieces, 'hex') AS sha1pieceshex,
-    btih,
-    encode(btih, 'hex') AS btihhex,
-    pgp,
-    zblocksize,
-    zhashlens,
-    zsums,
-    encode(zsums, 'hex') AS zsumshex
+    encode(btih,       'hex') AS btihhex,
+    encode(zsums,      'hex') AS zsumshex
   FROM files;
