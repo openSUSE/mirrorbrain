@@ -1892,10 +1892,14 @@ static int mb_handler(request_rec *r)
 
     realfile = ptr;
     debugLog(r, cfg, "Canonicalized file on disk: %s", realfile);
-
-    /* the leading directory needs to be stripped from the file path */
-    /* a directory from Apache always ends in '/'; a result from realpath() doesn't */
-    filename = realfile + strlen(mirror_base) + 1;
+    if (strncmp(ptr, mirror_base, strlen(mirror_base))) {
+        debugLog(r, cfg, "File is not on mirror base -> using original name");
+    } else {
+        /* the leading directory needs to be stripped from the file path */
+        /* a directory from Apache always ends in '/'; a result from realpath() doesn't */
+        debugLog(r, cfg, "File is on mirror base -> using real name");
+        filename = realfile + strlen(mirror_base) + 1;
+    }
 
     if (rep != YUMLIST) {
         /* keep a filename version without leading path, because metalink clients
