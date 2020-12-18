@@ -1,5 +1,5 @@
 #!BuildTag: serviced
-FROM opensuse/leap:15.1
+FROM opensuse/leap:15.2
 ENV container docker
 
 ENV LANG en_US.UTF-8
@@ -13,5 +13,6 @@ RUN chmod -R o+w environs
 
 WORKDIR /opt/environs
 RUN bash -x .product/mb/branch/.install_dependencies.sh
+RUN zypper -n install python3-demjson # for jsonlint
 
 ENTRYPOINT ["/usr/bin/tail", "-f", "/dev/null"]

@@ -1,14 +1,14 @@
 ###### FROM registry.opensuse.org/home/andriinikitin/containers/serviced
 
 #!BuildTag: serviced
-FROM opensuse/leap:15.1
+FROM opensuse/leap:15.2
 ENV container docker
 
 ENV LANG en_US.UTF-8
 
-RUN zypper -n addrepo https://download.opensuse.org/repositories/openSUSE:/infrastructure/openSUSE_Leap_15.1/ openSUSE:infrastructure
+RUN zypper -n addrepo https://download.opensuse.org/repositories/openSUSE:/infrastructure/openSUSE_Leap_15.2/ openSUSE:infrastructure
 RUN zypper mr -p 97 openSUSE:infrastructure
-RUN zypper -n addrepo https://download.opensuse.org/repositories/server:/database:/postgresql/openSUSE_Leap_15.1/ server:database:postgresql
+RUN zypper -n addrepo https://download.opensuse.org/repositories/server:/database:/postgresql/openSUSE_Leap_15.2/ server:database:postgresql
 RUN zypper mr -p 98 server:database:postgresql
 
 RUN zypper -n --gpg-auto-import-keys --no-gpg-checks refresh
@@ -21,7 +21,7 @@ RUN systemctl mask dev-mqueue.mount dev-hugepages.mount \
     display-manager.service graphical.target systemd-logind.service
 
 ADD dbus.service /etc/systemd/system/dbus.service
-RUN zypper -n install postgresql12 postgresql12-server postgresql12-ip4r \
+RUN zypper -n install postgresql13 postgresql13-server postgresql13-ip4r \
     apache2-devel apache2-worker apache2-mod_asn apache2-mod_maxminddb apache2-mod_form \
     mirrorbrain mirrorbrain-scanner mirrorbrain-tools \
     python3-devel python3-cmdln python3-SQLObject python3-psycopg2 python3-FormEncode \
