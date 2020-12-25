@@ -38,7 +38,7 @@ def req(baseurl, filename, http_method='GET', get_digest=False):
 
 def probe(S, http_method='GET'):
 
-    if S.scheme in ['http', 'ftp']:
+    if S.scheme in ['http', 'https', 'ftp']:
         req = urllib.request.Request(S.probeurl)
         if S.scheme == 'http' and http_method == 'HEAD':
             # not for FTP URLs
@@ -70,7 +70,7 @@ def probe(S, http_method='GET'):
         if S.get_content:
             S.content = response.read()
 
-        if S.scheme == 'http':
+        if S.scheme in ['http', 'https']:
             S.http_code = getattr(response, "code", None)
             if S.http_code == 200:
                 S.has_file = True
